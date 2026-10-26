@@ -16,7 +16,7 @@ waydroid show-full-ui
 
 | Problem | What droidanvil does |
 |---|---|
-| Android gets no IP address behind ufw (Omarchy's default firewall) | Allows DHCP, DNS and forwarding on `waydroid0` only, tagged `droidanvil` so uninstall can remove them; firewalld gets `waydroid0` in the trusted zone |
+| Android gets no IP address behind ufw (Omarchy's default firewall) | Adds only the missing DHCP, DNS and forwarding rules for `waydroid0`, never changes rules you made, and removes only its own on uninstall; firewalld gets `waydroid0` in the trusted zone |
 | Image downloads stall on a slow SourceForge mirror | Downloads from the fastest working mirror, resumes, verifies the channel's SHA-256, then hands the files to the stock `waydroid init`; `waydroid upgrade` keeps using the official channel |
 | A leftover `binder_linux-dkms` freezes kernels that already have binder (omarchy#16625) | `doctor` detects it and prints the removal commands |
 | Kernel without binder, broken `python-gbinder` after a Python upgrade, no Wayland session, low memory or disk | `doctor` explains each one and the fix |
@@ -24,7 +24,7 @@ waydroid show-full-ui
 ## Commands
 
 ```
-droidanvil.sh install [--android 13|16|17] [--vanilla]
+droidanvil.sh install [--android 13|16|17] [--vanilla] [--force]
 droidanvil.sh doctor
 droidanvil.sh uninstall [--purge]
 ```
@@ -33,8 +33,13 @@ droidanvil.sh uninstall [--purge]
 - `--android 16` and `--android 17` use community images built by
   [WayDroid-ATV](https://github.com/WayDroid-ATV/waydroid-builds). They are experimental.
 - `--vanilla` installs Android without Google apps.
-- `uninstall` stops Waydroid and removes droidanvil's firewall rules; `--purge` also removes the package
-  and all Android data.
+- `--force` switches an existing install to a different channel. Android data is kept, and a different
+  Android version may not boot on it; `uninstall --purge` first gives a clean switch.
+- `uninstall` stops Waydroid and removes only the firewall rules droidanvil added (recorded in
+  `~/.local/state/droidanvil`); `--purge` also removes the package and all Android data.
+
+Image downloads are cached in `~/.cache/droidanvil` and resume if interrupted. Set `DROIDANVIL_MIN_BPS`
+to change the speed below which a mirror is abandoned (default 100000 bytes per second).
 
 droidanvil uses the stock Waydroid package from the Arch repositories and changes nothing inside it.
 
