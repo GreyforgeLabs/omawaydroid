@@ -485,7 +485,7 @@ cmd_install() {
         die "Waydroid is set up from $current. Switching channels keeps your Android data, and a different
        Android version may not boot on it. Run 'uninstall --purge' first for a clean switch, or add --force."
     fi
-    (( android == 13 )) || warn "Android $android images are community builds by WayDroid-ATV (https://github.com/WayDroid-ATV/waydroid-builds), not official Waydroid"
+    (( android == 13 )) || info "Android $android images are built by WayDroid-ATV (https://github.com/WayDroid-ATV/waydroid-builds)"
 
     say "Installing Waydroid"
     sudo pacman -S --needed --noconfirm waydroid
