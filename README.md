@@ -30,8 +30,8 @@ droidanvil.sh uninstall [--purge]
 ```
 
 - `--android 13` (default) uses the official Waydroid images.
-- `--android 16` and `--android 17` use community images built by
-  [WayDroid-ATV](https://github.com/WayDroid-ATV/waydroid-builds). They are experimental.
+- `--android 16` and `--android 17` install Android 16 or 17, built by
+  [WayDroid-ATV](https://github.com/WayDroid-ATV/waydroid-builds).
 - `--vanilla` installs Android without Google apps.
 - `--force` switches an existing install to a different channel. Android data is kept, and a different
   Android version may not boot on it; `uninstall --purge` first gives a clean switch.
