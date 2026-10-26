@@ -10,10 +10,20 @@ One command installs Waydroid, opens the firewall for it, downloads the Android 
 mirror and starts the container. A `doctor` command checks the things that most often stop Waydroid on
 Arch-based desktops.
 
+## Install
+
+```sh
+bash <(curl -fsSL https://raw.githubusercontent.com/GreyforgeLabs/omawaydroid/main/omawaydroid.sh) install --android 17
+```
+
+Use `--android 16` or leave the option out for Android 13. Then start Android with
+`waydroid show-full-ui`, or open any Android app from your app menu.
+
+To keep the script for `doctor` and `uninstall` later:
+
 ```sh
 curl -fsSLO https://raw.githubusercontent.com/GreyforgeLabs/omawaydroid/main/omawaydroid.sh
-bash omawaydroid.sh install
-waydroid show-full-ui
+bash omawaydroid.sh doctor
 ```
 
 ## What it fixes
