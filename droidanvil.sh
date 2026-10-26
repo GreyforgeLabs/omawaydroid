@@ -16,6 +16,9 @@ A16_FIXED_STAMP=1785785040
 # Android 16 and 17 images only show apps inside the full Android window, so app-menu entries
 # (`waydroid app launch|intent`) go through this wrapper, which opens that window afterwards.
 SHIM=$HOME/.local/bin/waydroid
+SHIM_MARK="# droidanvil-shim v1"
+# Android 16 shows its lock screen on every start unless this default is set before the first boot.
+LOCK_PROP=ro.lockscreen.disable.default
 SF_MIRRORS=(autoselect freefr netactuate pilotfiber phoenixnap netix)
 CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/droidanvil
 STATE=${XDG_STATE_HOME:-$HOME/.local/state}/droidanvil
@@ -186,7 +189,7 @@ check_waydroid() {
         ok "images built $(date -d "@$sys" +%F) (system), $(date -d "@$ven" +%F) (vendor) from $sys_ota"
     fi
     if [[ $sys_ota == "$ATV"/* ]]; then
-        if [[ $(command -v waydroid) == "$SHIM" ]] && grep -q "$TAG" "$SHIM" 2>/dev/null; then
+        if shim_is_ours && session_prefers_shim; then
             ok "app-menu entries open inside the Android window"
         else
             warn "Android 16/17 apps started from the app menu will not appear: run install again to add the launcher"
@@ -195,21 +198,46 @@ check_waydroid() {
     if systemctl is-active -q waydroid-container; then ok "waydroid-container is running"; else info "waydroid-container is stopped"; fi
 }
 
+shim_is_ours() { [[ -f $SHIM && ! -L $SHIM ]] && grep -qxF "$SHIM_MARK" "$SHIM"; }
+
+# App-menu entries run `waydroid` from the desktop session's PATH, not from this terminal's.
+session_prefers_shim() {
+    local path dir dirs
+    path=$(systemctl --user show-environment 2>/dev/null | sed -n 's/^PATH=//p')
+    [[ -n $path ]] || path=$PATH
+    IFS=: read -ra dirs <<< "$path"
+    for dir in "${dirs[@]}"; do
+        [[ $dir == "$(dirname "$SHIM")" ]] && return 0
+        [[ $dir == /usr/bin || $dir == /bin ]] && return 1
+    done
+    return 1
+}
+
 install_shim() {
+    if [[ -e $SHIM || -L $SHIM ]] && ! shim_is_ours; then
+        warn "kept your own $SHIM, so Android 16/17 apps started from the app menu will not appear"
+        return 0
+    fi
     mkdir -p "$(dirname "$SHIM")"
-    cat > "$SHIM" <<EOF
+    local tmp=$SHIM.tmp.$$
+    cat > "$tmp" <<EOF
 #!/bin/sh
-# Installed by $TAG for Android 16/17 images: they only show apps inside the full Android
-# window, so open it after launching an app. Everything else goes straight to Waydroid.
+$SHIM_MARK
+# Installed by droidanvil for Android 16/17 images, which only show apps inside the full Android
+# window: open that window after launching an app. Everything else goes straight to Waydroid.
+case "\$3" in ""|-*) exec /usr/bin/waydroid "\$@" ;; esac
 if [ "\$1" = app ] && { [ "\$2" = launch ] || [ "\$2" = intent ]; }; then
-    # From a cold start, open the window first and wait for Android to finish booting, or the
-    # launch is lost behind the home screen.
+    # From a cold start, open the window and wait for Android to finish booting first, or the
+    # launch is lost behind the home screen. Give up after three minutes.
     if ! /usr/bin/waydroid status 2>/dev/null | grep -q 'Session:.*RUNNING'; then
         setsid /usr/bin/waydroid show-full-ui > /dev/null 2>&1 < /dev/null &
-        i=0
-        until [ "\$(/usr/bin/waydroid prop get sys.boot_completed 2>/dev/null)" = 1 ] || [ \$i -ge 180 ]; do
+        end=\$((\$(date +%s) + 180))
+        until [ "\$(timeout 10 /usr/bin/waydroid prop get sys.boot_completed 2>/dev/null)" = 1 ]; do
+            if [ "\$(date +%s)" -ge "\$end" ]; then
+                notify-send -a Waydroid "Android did not start" "Run droidanvil.sh doctor to see why." 2>/dev/null
+                exit 1
+            fi
             sleep 1
-            i=\$((i + 1))
         done
         sleep 3
     fi
@@ -218,17 +246,43 @@ if [ "\$1" = app ] && { [ "\$2" = launch ] || [ "\$2" = intent ]; }; then
 fi
 exec /usr/bin/waydroid "\$@"
 EOF
-    chmod 755 "$SHIM"
-    hash -r
-    if [[ $(command -v waydroid) == "$SHIM" ]]; then ok "app-menu entries will open inside the Android window"
-    else warn "$(dirname "$SHIM") is not ahead of /usr/bin in PATH, so app-menu entries may not open"; fi
+    chmod 755 "$tmp"
+    mv -f "$tmp" "$SHIM"
+    if session_prefers_shim; then ok "app-menu entries will open inside the Android window"
+    else warn "$(dirname "$SHIM") is not ahead of /usr/bin in your desktop session's PATH, so Android 16/17 apps started from the app menu will not appear"; fi
 }
 
 remove_shim() {
-    if [[ -f $SHIM ]] && grep -q "$TAG" "$SHIM"; then
+    if shim_is_ours; then
         rm -f "$SHIM"
         ok "removed the Android 16/17 app launcher"
     fi
+}
+
+# Add or remove the lock-screen default; rebuild Android's properties only when the config changed.
+lockscreen_default() {  # add|remove
+    [[ -r $CFG ]] || return 0
+    local rc=0
+    sudo python3 -I -c '
+import sys
+path, action, key = sys.argv[1:4]
+lines = open(path).read().split("\n")
+def is_key(line):
+    return line.split("=")[0].strip() == key
+has = any(is_key(line) for line in lines)
+if action == "add" and not has:
+    if "[properties]" not in [line.strip() for line in lines]:
+        while lines and lines[-1] == "":
+            lines.pop()
+        lines += ["", "[properties]", ""]
+    i = [line.strip() for line in lines].index("[properties]")
+    lines.insert(i + 1, key + " = true")
+elif action == "remove" and has:
+    lines = [line for line in lines if not is_key(line)]
+else:
+    sys.exit(3)
+open(path, "w").write("\n".join(lines))' "$CFG" "$1" "$LOCK_PROP" || rc=$?
+    if (( rc == 0 )); then sudo waydroid upgrade --offline > /dev/null 2>&1 || true; fi
 }
 
 # --- firewall -------------------------------------------------------------------------
@@ -301,18 +355,25 @@ sha_ok() { [[ -f $1 && $(sha256sum < "$1" | cut -d' ' -f1) == "$2" ]]; }
 fetch() {  # url sha256 dest
     local url=$1 sum=$2 dest=$3 direct mirror
     if sha_ok "$dest" "$sum"; then ok "$(basename "$dest") already downloaded"; return 0; fi
+    # A partial file that is not a zip (an error page) cannot be resumed.
+    if [[ -s $dest && $(head -c 2 "$dest") != PK ]]; then rm -f "$dest"; fi
     direct=$(sed -E 's#^https://sourceforge\.net/projects/([^/]+)/files/(.*)/download$#https://downloads.sourceforge.net/project/\1/\2#' <<< "$url")
-    local curl=(curl -fL --progress-bar --proto =https --proto-redir =https -C - -o "$dest")
+    local curl=(curl -fL --progress-bar --proto =https --proto-redir =https --retry 3 -C - -o "$dest") rc=0
     if [[ $direct != "$url" ]]; then
         for mirror in "${SF_MIRRORS[@]}"; do
             "${curl[@]}" --speed-limit "$MIN_BPS" --speed-time 30 -- "$direct?use_mirror=$mirror" && break
         done
     fi
     # Last attempt without a speed floor, so slow connections still finish.
-    sha_ok "$dest" "$sum" || "${curl[@]}" -- "$url" || true
+    sha_ok "$dest" "$sum" || "${curl[@]}" -- "$url" || rc=$?
     sha_ok "$dest" "$sum" && return 0
+    if [[ $url == "$A16_FIXED_URL" ]] && { (( rc == 22 )) || [[ -s $dest && $(head -c 2 "$dest") != PK ]]; }; then
+        rm -f "$dest"
+        die "the fixed Android 16 build cannot be downloaded from Google Drive right now; try again later or use --android 17"
+    fi
+    (( rc == 0 )) || die "the download of $(basename "$dest") was interrupted; run install again to resume it"
     rm -f "$dest"
-    die "could not download $(basename "$dest") with a matching checksum; run install again to retry"
+    die "$(basename "$dest") did not match its checksum; run install again to download it fresh"
 }
 
 # Prints "url sha256 filename datetime" for the newest entry of a channel JSON file.
@@ -434,20 +495,10 @@ cmd_install() {
     init_images "$sys_ch" "$ven_ch" "$type" "$force" "$pin"
     if (( android == 13 )); then
         remove_shim
+        lockscreen_default remove
     else
         install_shim
-        # Android 16 shows its lock screen on every start unless this default is set before the
-        # first boot; with it, Android opens straight to the home screen like Android 13 does.
-        sudo python3 -I -c '
-import sys
-path = sys.argv[1]
-text = open(path).read()
-if "[properties]" not in text:
-    text = text.rstrip("\n") + "\n\n[properties]\n"
-if "ro.lockscreen.disable.default" not in text:
-    text = text.rstrip("\n") + "\nro.lockscreen.disable.default = true\n"
-open(path, "w").write(text)' "$CFG"
-        sudo waydroid upgrade --offline > /dev/null 2>&1 || true
+        lockscreen_default add
     fi
     sudo systemctl enable --now waydroid-container
     say "Done. Start Android with:  waydroid show-full-ui"
@@ -474,6 +525,7 @@ cmd_uninstall() {
     sudo systemctl disable --now waydroid-container > /dev/null 2>&1 || true
     close_firewall
     remove_shim
+    (( purge )) || lockscreen_default remove
     rm -rf "$CACHE"
     if (( purge )); then
         if findmnt -rn -o TARGET | grep -q '^/var/lib/waydroid\(/\|$\)'; then
@@ -482,8 +534,9 @@ cmd_uninstall() {
         if pacman -Q waydroid > /dev/null 2>&1; then
             sudo pacman -Rn --noconfirm waydroid || warn "could not remove the waydroid package"
         fi
-        sudo rm -rf --one-file-system /var/lib/waydroid "$HOME/.local/share/waydroid"
-        rm -f "$HOME"/.local/share/applications/waydroid.*.desktop
+        local data=${XDG_DATA_HOME:-$HOME/.local/share}
+        sudo rm -rf --one-file-system /var/lib/waydroid "$data/waydroid"
+        rm -f "$data"/applications/waydroid.*.desktop
         rm -rf "$STATE"
         ok "removed Waydroid and all Android data (its dependencies stay; see 'pacman -Qdt')"
     fi
