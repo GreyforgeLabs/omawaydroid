@@ -1,8 +1,8 @@
-# droidanvil
+# omawaydroid
 
 Waydroid that just works on Omarchy and Arch Linux.
 
-droidanvil builds on the work of the [Waydroid](https://github.com/waydroid/waydroid) project and
+omawaydroid builds on the work of the [Waydroid](https://github.com/waydroid/waydroid) project and
 [WayDroid-ATV](https://github.com/WayDroid-ATV/waydroid-builds) to add the fixes and patches needed to
 run Android 13, 16 and 17 with Waydroid on a stable Omarchy machine.
 
@@ -11,14 +11,14 @@ mirror and starts the container. A `doctor` command checks the things that most 
 Arch-based desktops.
 
 ```sh
-curl -fsSLO https://raw.githubusercontent.com/GreyforgeLabs/droidanvil/main/droidanvil.sh
-bash droidanvil.sh install
+curl -fsSLO https://raw.githubusercontent.com/GreyforgeLabs/omawaydroid/main/omawaydroid.sh
+bash omawaydroid.sh install
 waydroid show-full-ui
 ```
 
 ## What it fixes
 
-| Problem | What droidanvil does |
+| Problem | What omawaydroid does |
 |---|---|
 | Android gets no IP address behind ufw (Omarchy's default firewall) | Adds only the missing DHCP, DNS and forwarding rules for `waydroid0`, never changes rules you made, and removes only its own on uninstall; firewalld gets `waydroid0` in the trusted zone |
 | Image downloads stall on a slow SourceForge mirror | Downloads from the fastest working mirror, resumes, verifies the channel's SHA-256, then hands the files to the stock `waydroid init`; `waydroid upgrade` keeps using the official channel |
@@ -29,18 +29,18 @@ waydroid show-full-ui
 ## Commands
 
 ```
-droidanvil.sh install [--android 13|16|17] [--vanilla] [--force]
-droidanvil.sh doctor
-droidanvil.sh uninstall [--purge]
+omawaydroid.sh install [--android 13|16|17] [--vanilla] [--force]
+omawaydroid.sh doctor
+omawaydroid.sh uninstall [--purge]
 ```
 
 - `--android 13` (default) uses the official Waydroid images.
 - `--android 16` and `--android 17` install Android 16 or 17, built by
-  [WayDroid-ATV](https://github.com/WayDroid-ATV/waydroid-builds). droidanvil sets them up to behave
+  [WayDroid-ATV](https://github.com/WayDroid-ATV/waydroid-builds). omawaydroid sets them up to behave
   like Android 13 does:
   - Android 16 comes from the builder's fixed 2026-08-03 build (checksum-pinned) until the Android 16
     update channel publishes something newer; `waydroid upgrade` then moves to it.
-  - Apps opened from your app menu appear in the Android window: droidanvil adds a small `waydroid`
+  - Apps opened from your app menu appear in the Android window: omawaydroid adds a small `waydroid`
     wrapper in `~/.local/bin` that opens the window after launching an app. Everything else passes
     straight through to Waydroid.
   - Android starts at the home screen instead of a lock screen.
@@ -49,13 +49,13 @@ droidanvil.sh uninstall [--purge]
 - `--vanilla` installs Android without Google apps.
 - `--force` switches an existing install to a different channel. Android data is kept, and a different
   Android version may not boot on it; `uninstall --purge` first gives a clean switch.
-- `uninstall` stops Waydroid and removes only the firewall rules droidanvil added (recorded in
-  `~/.local/state/droidanvil`); `--purge` also removes the package and all Android data.
+- `uninstall` stops Waydroid and removes only the firewall rules omawaydroid added (recorded in
+  `~/.local/state/omawaydroid`); `--purge` also removes the package and all Android data.
 
-Image downloads are cached in `~/.cache/droidanvil` and resume if interrupted. Set `DROIDANVIL_MIN_BPS`
+Image downloads are cached in `~/.cache/omawaydroid` and resume if interrupted. Set `OMAWAYDROID_MIN_BPS`
 to change the speed below which a mirror is abandoned (default 100000 bytes per second).
 
-droidanvil uses the stock Waydroid package from the Arch repositories and changes nothing inside it.
+omawaydroid uses the stock Waydroid package from the Arch repositories and changes nothing inside it.
 
 ## Requirements
 

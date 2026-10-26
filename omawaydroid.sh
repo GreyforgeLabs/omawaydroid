@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# droidanvil: Waydroid that just works on Omarchy and Arch Linux.
+# omawaydroid: Waydroid that just works on Omarchy and Arch Linux.
 # Runs as your normal user and asks sudo for the root steps.
 set -euo pipefail
 
 VERSION=0.1.0
-TAG=droidanvil
+TAG=omawaydroid
 ATV=https://waydroid-atv.github.io/ota
 # The Android 16 channel still serves the 2026-07-17 build, whose display service crash-loops
 # (WayDroid-ATV issue #37). Until the channel has something newer, install the fixed 2026-08-03
@@ -16,18 +16,18 @@ A16_FIXED_STAMP=1785785040
 # Android 16 and 17 images only show apps inside the full Android window, so app-menu entries
 # (`waydroid app launch|intent`) go through this wrapper, which opens that window afterwards.
 SHIM=$HOME/.local/bin/waydroid
-SHIM_MARK="# droidanvil-shim v1"
+SHIM_MARK="# omawaydroid-shim v1"
 # Android 16 shows its lock screen on every start unless this default is set before the first boot.
 LOCK_PROP=ro.lockscreen.disable.default
 SF_MIRRORS=(autoselect freefr netactuate pilotfiber phoenixnap netix)
-CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/droidanvil
-STATE=${XDG_STATE_HOME:-$HOME/.local/state}/droidanvil
+CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/omawaydroid
+STATE=${XDG_STATE_HOME:-$HOME/.local/state}/omawaydroid
 CFG=/var/lib/waydroid/waydroid.cfg
 PREINSTALLED=(/etc/waydroid-extra/images /usr/share/waydroid-extra/images)
 # Skip a mirror that stays below this many bytes per second for 30 seconds.
-MIN_BPS=${DROIDANVIL_MIN_BPS:-100000}
+MIN_BPS=${OMAWAYDROID_MIN_BPS:-100000}
 
-# ufw rules droidanvil needs, without the leading action word.
+# ufw rules omawaydroid needs, without the leading action word.
 UFW_RULES=(
     "in on waydroid0 to any port 67 proto udp"
     "in on waydroid0 to any port 53"
@@ -48,14 +48,14 @@ trap '[[ -n $WORK_DIR ]] && rm -rf "$WORK_DIR"' EXIT
 
 usage() {
     cat <<'EOF'
-droidanvil: Waydroid that just works on Omarchy and Arch Linux.
+omawaydroid: Waydroid that just works on Omarchy and Arch Linux.
 
-  droidanvil.sh install [--android 13|16|17] [--vanilla] [--force]
+  omawaydroid.sh install [--android 13|16|17] [--vanilla] [--force]
                                    set up Waydroid end to end; --force replaces an existing
                                    install from a different channel (Android data is kept)
-  droidanvil.sh doctor             read-only health check
-  droidanvil.sh uninstall [--purge]
-                                   undo droidanvil's changes; --purge also removes Waydroid
+  omawaydroid.sh doctor             read-only health check
+  omawaydroid.sh uninstall [--purge]
+                                   undo omawaydroid's changes; --purge also removes Waydroid
                                    and all Android data
 EOF
 }
@@ -97,7 +97,7 @@ dkms_leftovers() {
 ufw_active() { command -v ufw > /dev/null && sudo ufw status 2>/dev/null | grep -q '^Status: active'; }
 firewalld_active() { systemctl is-active -q firewalld 2>/dev/null; }
 
-# Prints the existing ufw rule (any action, any comment) for a droidanvil rule spec, if there is one.
+# Prints the existing ufw rule (any action, any comment) for a omawaydroid rule spec, if there is one.
 ufw_existing() {  # spec
     local spec=$1 prefix=ufw
     [[ $spec == route\ * ]] && { prefix="ufw route"; spec=${spec#route }; }
@@ -120,7 +120,7 @@ preinstalled_images() {
 
 check_host() {
     say "Checking this machine"
-    command -v pacman > /dev/null || die "droidanvil supports Arch-based systems (Omarchy, Arch, EndeavourOS, CachyOS) for now"
+    command -v pacman > /dev/null || die "omawaydroid supports Arch-based systems (Omarchy, Arch, EndeavourOS, CachyOS) for now"
     [[ $(uname -m) == x86_64 ]] || die "only x86_64 is supported for now"
 
     if [[ -n ${WAYLAND_DISPLAY:-} ]]; then ok "Wayland session ($WAYLAND_DISPLAY)"
@@ -223,7 +223,7 @@ install_shim() {
     cat > "$tmp" <<EOF
 #!/bin/sh
 $SHIM_MARK
-# Installed by droidanvil for Android 16/17 images, which only show apps inside the full Android
+# Installed by omawaydroid for Android 16/17 images, which only show apps inside the full Android
 # window: open that window after launching an app. Everything else goes straight to Waydroid.
 case "\$3" in ""|-*) exec /usr/bin/waydroid "\$@" ;; esac
 if [ "\$1" = app ] && { [ "\$2" = launch ] || [ "\$2" = intent ]; }; then
@@ -234,7 +234,7 @@ if [ "\$1" = app ] && { [ "\$2" = launch ] || [ "\$2" = intent ]; }; then
         end=\$((\$(date +%s) + 180))
         until [ "\$(timeout 10 /usr/bin/waydroid prop get sys.boot_completed 2>/dev/null)" = 1 ]; do
             if [ "\$(date +%s)" -ge "\$end" ]; then
-                notify-send -a Waydroid "Android did not start" "Run droidanvil.sh doctor to see why." 2>/dev/null
+                notify-send -a Waydroid "Android did not start" "Run omawaydroid.sh doctor to see why." 2>/dev/null
                 exit 1
             fi
             sleep 1
@@ -336,7 +336,7 @@ close_firewall() {
             fi
         done
         rm -f "$STATE/ufw-rules"
-        ok "ufw: removed the rules droidanvil added"
+        ok "ufw: removed the rules omawaydroid added"
     fi
     if [[ -e $STATE/firewalld-trusted ]] && command -v firewall-cmd > /dev/null; then
         sudo firewall-cmd --zone=trusted --remove-interface=waydroid0 > /dev/null 2>&1 || true
@@ -520,7 +520,7 @@ cmd_uninstall() {
         "") ;;
         *) die "unknown option $1" ;;
     esac
-    say "Removing droidanvil changes"
+    say "Removing omawaydroid changes"
     waydroid session stop > /dev/null 2>&1 || true
     sudo systemctl disable --now waydroid-container > /dev/null 2>&1 || true
     close_firewall
@@ -546,6 +546,6 @@ case ${1:-} in
     install)   shift; cmd_install "$@" ;;
     doctor)    cmd_doctor ;;
     uninstall) shift; cmd_uninstall "$@" ;;
-    -v|--version) echo "droidanvil $VERSION" ;;
+    -v|--version) echo "omawaydroid $VERSION" ;;
     *) usage; exit 2 ;;
 esac
