@@ -2,6 +2,10 @@
 
 Waydroid that just works on Omarchy and Arch Linux.
 
+droidanvil builds on the work of the [Waydroid](https://github.com/waydroid/waydroid) project and
+[WayDroid-ATV](https://github.com/WayDroid-ATV/waydroid-builds) to add the fixes and patches needed to
+run Android 13, 16 and 17 with Waydroid on a stable Omarchy machine.
+
 One command installs Waydroid, opens the firewall for it, downloads the Android images from a fast
 mirror and starts the container. A `doctor` command checks the things that most often stop Waydroid on
 Arch-based desktops.
@@ -58,6 +62,12 @@ droidanvil uses the stock Waydroid package from the Arch repositories and change
 An x86_64 Arch-based system (Omarchy, Arch, EndeavourOS, CachyOS), a Wayland session, a kernel with
 binder (Omarchy 7.2.8-9 or newer; Arch `linux`, `linux-zen`, `linux-lts`), about 2 GB of free memory
 and 8 GB of disk.
+
+## Credits
+
+- [Waydroid](https://github.com/waydroid/waydroid): the container runtime and the official Android 13 images.
+- [WayDroid-ATV](https://github.com/WayDroid-ATV/waydroid-builds): the Android 16 and 17 images.
+- [Omarchy](https://github.com/omacom/omarchy): the kernel with binder built in.
 
 ## License
 
