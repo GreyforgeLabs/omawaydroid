@@ -19,6 +19,7 @@ waydroid show-full-ui
 | Android gets no IP address behind ufw (Omarchy's default firewall) | Adds only the missing DHCP, DNS and forwarding rules for `waydroid0`, never changes rules you made, and removes only its own on uninstall; firewalld gets `waydroid0` in the trusted zone |
 | Image downloads stall on a slow SourceForge mirror | Downloads from the fastest working mirror, resumes, verifies the channel's SHA-256, then hands the files to the stock `waydroid init`; `waydroid upgrade` keeps using the official channel |
 | A leftover `binder_linux-dkms` freezes kernels that already have binder (omarchy#16625) | `doctor` detects it and prints the removal commands |
+| Android 16 and 17 open no window for apps started from the app menu | Adds a launcher wrapper that opens them in the Android window |
 | Kernel without binder, broken `python-gbinder` after a Python upgrade, no Wayland session, low memory or disk | `doctor` explains each one and the fix |
 
 ## Commands
@@ -31,7 +32,16 @@ droidanvil.sh uninstall [--purge]
 
 - `--android 13` (default) uses the official Waydroid images.
 - `--android 16` and `--android 17` install Android 16 or 17, built by
-  [WayDroid-ATV](https://github.com/WayDroid-ATV/waydroid-builds).
+  [WayDroid-ATV](https://github.com/WayDroid-ATV/waydroid-builds). droidanvil sets them up to behave
+  like Android 13 does:
+  - Android 16 comes from the builder's fixed 2026-08-03 build (checksum-pinned) until the Android 16
+    update channel publishes something newer; `waydroid upgrade` then moves to it.
+  - Apps opened from your app menu appear in the Android window: droidanvil adds a small `waydroid`
+    wrapper in `~/.local/bin` that opens the window after launching an app. Everything else passes
+    straight through to Waydroid.
+  - Android starts at the home screen instead of a lock screen.
+  - The first start shows Google's setup screens; finish them once and apps open normally.
+  - Android 16 is available with Google apps only.
 - `--vanilla` installs Android without Google apps.
 - `--force` switches an existing install to a different channel. Android data is kept, and a different
   Android version may not boot on it; `uninstall --purge` first gives a clean switch.

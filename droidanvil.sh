@@ -6,6 +6,16 @@ set -euo pipefail
 VERSION=0.1.0
 TAG=droidanvil
 ATV=https://waydroid-atv.github.io/ota
+# The Android 16 channel still serves the 2026-07-17 build, whose display service crash-loops
+# (WayDroid-ATV issue #37). Until the channel has something newer, install the fixed 2026-08-03
+# build the same builder published in that issue. It exists with Google apps only.
+A16_FIXED_URL="https://drive.usercontent.google.com/download?id=1MeFBajp-IVILssFEmMLaGz3BWN2qvKuG&export=download&confirm=t"
+A16_FIXED_SHA=6c057275bcadde60fa3d19f4012455a643ed18e5846a1227971e526d6491ed44
+A16_FIXED_NAME=lineage-23.2-20260803-GAPPS-waydroid_x86_64.zip
+A16_FIXED_STAMP=1785785040
+# Android 16 and 17 images only show apps inside the full Android window, so app-menu entries
+# (`waydroid app launch|intent`) go through this wrapper, which opens that window afterwards.
+SHIM=$HOME/.local/bin/waydroid
 SF_MIRRORS=(autoselect freefr netactuate pilotfiber phoenixnap netix)
 CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/droidanvil
 STATE=${XDG_STATE_HOME:-$HOME/.local/state}/droidanvil
@@ -175,7 +185,50 @@ check_waydroid() {
     else
         ok "images built $(date -d "@$sys" +%F) (system), $(date -d "@$ven" +%F) (vendor) from $sys_ota"
     fi
+    if [[ $sys_ota == "$ATV"/* ]]; then
+        if [[ $(command -v waydroid) == "$SHIM" ]] && grep -q "$TAG" "$SHIM" 2>/dev/null; then
+            ok "app-menu entries open inside the Android window"
+        else
+            warn "Android 16/17 apps started from the app menu will not appear: run install again to add the launcher"
+        fi
+    fi
     if systemctl is-active -q waydroid-container; then ok "waydroid-container is running"; else info "waydroid-container is stopped"; fi
+}
+
+install_shim() {
+    mkdir -p "$(dirname "$SHIM")"
+    cat > "$SHIM" <<EOF
+#!/bin/sh
+# Installed by $TAG for Android 16/17 images: they only show apps inside the full Android
+# window, so open it after launching an app. Everything else goes straight to Waydroid.
+if [ "\$1" = app ] && { [ "\$2" = launch ] || [ "\$2" = intent ]; }; then
+    # From a cold start, open the window first and wait for Android to finish booting, or the
+    # launch is lost behind the home screen.
+    if ! /usr/bin/waydroid status 2>/dev/null | grep -q 'Session:.*RUNNING'; then
+        setsid /usr/bin/waydroid show-full-ui > /dev/null 2>&1 < /dev/null &
+        i=0
+        until [ "\$(/usr/bin/waydroid prop get sys.boot_completed 2>/dev/null)" = 1 ] || [ \$i -ge 180 ]; do
+            sleep 1
+            i=\$((i + 1))
+        done
+        sleep 3
+    fi
+    /usr/bin/waydroid "\$@" || exit \$?
+    exec /usr/bin/waydroid show-full-ui
+fi
+exec /usr/bin/waydroid "\$@"
+EOF
+    chmod 755 "$SHIM"
+    hash -r
+    if [[ $(command -v waydroid) == "$SHIM" ]]; then ok "app-menu entries will open inside the Android window"
+    else warn "$(dirname "$SHIM") is not ahead of /usr/bin in PATH, so app-menu entries may not open"; fi
+}
+
+remove_shim() {
+    if [[ -f $SHIM ]] && grep -q "$TAG" "$SHIM"; then
+        rm -f "$SHIM"
+        ok "removed the Android 16/17 app launcher"
+    fi
 }
 
 # --- firewall -------------------------------------------------------------------------
@@ -273,8 +326,8 @@ print(r["url"], r["id"], r["filename"], r["datetime"])' "$1"
 # Waydroid's own downloader cannot pick a mirror, so build a local copy of the OTA channel whose
 # entries point at verified files on disk, let `waydroid init` consume it, then point the config
 # back at the real channel so `waydroid upgrade` keeps working.
-init_images() {  # system_channel vendor_channel system_type force
-    local sys_ch=$1 ven_ch=$2 type=$3 force=$4
+init_images() {  # system_channel vendor_channel system_type force [pin]
+    local sys_ch=$1 ven_ch=$2 type=$3 force=$4 pin=${5:-}
     local -A rel=([system]=lineage/waydroid_x86_64/$type.json [vendor]=waydroid_x86_64/MAINLINE.json)
     local -A ch=([system]=$sys_ch [vendor]=$ven_ch)
     local -A url sum file stamp
@@ -293,6 +346,14 @@ init_images() {  # system_channel vendor_channel system_type force
         file[$part]=$CACHE/$name
     done
 
+    # One zip holds both images, so both channel entries point at it.
+    if [[ $pin == a16 ]] && (( stamp[system] < A16_FIXED_STAMP )); then
+        for part in system vendor; do
+            url[$part]=$A16_FIXED_URL sum[$part]=$A16_FIXED_SHA stamp[$part]=$A16_FIXED_STAMP
+            file[$part]=$CACHE/$A16_FIXED_NAME
+        done
+    fi
+
     local cur_stamp
     cur_stamp=$(cfg_get system_datetime)
     if [[ $(cfg_get system_ota) == "$sys_ch/${rel[system]}" && ${cur_stamp:-0} -ge ${stamp[system]} ]]; then
@@ -307,9 +368,11 @@ init_images() {  # system_channel vendor_channel system_type force
         python3 -I -c '
 import json, sys
 d = json.load(open(sys.argv[1]))
-d["response"] = d["response"][:1]
-d["response"][0]["url"] = "file://" + sys.argv[2]
-json.dump(d, open(sys.argv[3], "w"))' "$WORK_DIR/$part.json" "${file[$part]}" "$WORK_DIR/$part/${rel[$part]}"
+r = d["response"] = d["response"][:1]
+r[0].update(url="file://" + sys.argv[2], filename=sys.argv[2].rsplit("/", 1)[1],
+            id=sys.argv[3], datetime=int(sys.argv[4]))
+json.dump(d, open(sys.argv[5], "w"))' "$WORK_DIR/$part.json" "${file[$part]}" "${sum[$part]}" "${stamp[$part]}" \
+            "$WORK_DIR/$part/${rel[$part]}"
     done
 
     say "Initializing Waydroid"
@@ -341,6 +404,7 @@ cmd_install() {
         shift
     done
     [[ $android =~ ^(13|16|17)$ ]] || die "--android must be 13, 16 or 17"
+    [[ $android == 16 && $type == VANILLA ]] && die "Android 16 is available with Google apps only for now; use --android 17 --vanilla"
 
     local sys_ch ven_ch
     case $android in
@@ -365,7 +429,26 @@ cmd_install() {
     say "Installing Waydroid"
     sudo pacman -S --needed --noconfirm waydroid
     open_firewall
-    init_images "$sys_ch" "$ven_ch" "$type" "$force"
+    local pin=
+    if (( android == 16 )); then pin=a16; fi
+    init_images "$sys_ch" "$ven_ch" "$type" "$force" "$pin"
+    if (( android == 13 )); then
+        remove_shim
+    else
+        install_shim
+        # Android 16 shows its lock screen on every start unless this default is set before the
+        # first boot; with it, Android opens straight to the home screen like Android 13 does.
+        sudo python3 -I -c '
+import sys
+path = sys.argv[1]
+text = open(path).read()
+if "[properties]" not in text:
+    text = text.rstrip("\n") + "\n\n[properties]\n"
+if "ro.lockscreen.disable.default" not in text:
+    text = text.rstrip("\n") + "\nro.lockscreen.disable.default = true\n"
+open(path, "w").write(text)' "$CFG"
+        sudo waydroid upgrade --offline > /dev/null 2>&1 || true
+    fi
     sudo systemctl enable --now waydroid-container
     say "Done. Start Android with:  waydroid show-full-ui"
 }
@@ -390,6 +473,7 @@ cmd_uninstall() {
     waydroid session stop > /dev/null 2>&1 || true
     sudo systemctl disable --now waydroid-container > /dev/null 2>&1 || true
     close_firewall
+    remove_shim
     rm -rf "$CACHE"
     if (( purge )); then
         if findmnt -rn -o TARGET | grep -q '^/var/lib/waydroid\(/\|$\)'; then
@@ -399,6 +483,7 @@ cmd_uninstall() {
             sudo pacman -Rn --noconfirm waydroid || warn "could not remove the waydroid package"
         fi
         sudo rm -rf --one-file-system /var/lib/waydroid "$HOME/.local/share/waydroid"
+        rm -f "$HOME"/.local/share/applications/waydroid.*.desktop
         rm -rf "$STATE"
         ok "removed Waydroid and all Android data (its dependencies stay; see 'pacman -Qdt')"
     fi
