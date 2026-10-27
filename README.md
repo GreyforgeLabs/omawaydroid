@@ -41,6 +41,7 @@ Android app from your app menu.
 
 To keep the script for `doctor` and `uninstall`, download the v0.1.0 release and check it first:
 
+<!-- On each release, update the tag and the sha256 below to the new omawaydroid.sh asset. -->
 ```sh
 curl -fsSLO https://github.com/GreyforgeLabs/omawaydroid/releases/download/v0.1.0/omawaydroid.sh
 echo "0467e30991a7948f237da7b735da25725acfb2a99397c37e0e6979b6d2fa331b  omawaydroid.sh" | sha256sum -c
@@ -52,25 +53,28 @@ connection, Android 17 cold-starts in 19 seconds, and SuperTuxKart runs at 60 FP
 through ARM translation.
 
 <p align="center">
-  <img src="docs/doctor.svg" alt="omawaydroid doctor on Omarchy with Android 17 installed: Wayland session, kernel binder, memory, disk, ufw rules, Waydroid package, python-gbinder, image dates, app-menu launcher and container all pass, with 0 problems and 0 warnings" width="100%">
+  <img src="docs/doctor.svg" alt="Example omawaydroid doctor output on Omarchy with Android 17 installed: Wayland session, kernel binder, memory, disk, ufw rules, Waydroid package, python-gbinder, image dates, app-menu launcher and container all pass, with 0 problems and 0 warnings" width="100%">
 </p>
 
 ## First run
 
 1. **Check the machine.** `bash omawaydroid.sh doctor` changes nothing. It reports the Wayland
    session, the kernel's binder driver, free memory and disk, the firewall and, once Waydroid is
-   installed, the images and the container. Every `fail` and `warn` line names its fix.
+   installed, the images and the container. Every `fail` and `warn` line names its fix. It may ask
+   for `sudo` to read the firewall rules.
 2. **Install.** `bash omawaydroid.sh install --android 17` installs Waydroid, adds the firewall rules
    it needs, downloads and verifies the images, and starts `waydroid-container`. Downloads resume if
    the connection drops; run the same command again.
 3. **Start Android.** `waydroid show-full-ui` opens the Android window. On Android 16 and 17 it opens
-   at the home screen. With Google apps, the first start shows Google's setup screens; finish them
-   once and apps open normally after that.
+   at the home screen, and with Google apps the first start shows Google's setup screens; finish
+   them once and apps open normally after that. On Android 13 with Google apps, register the device
+   for the Play Store first, as the
+   [Waydroid docs](https://docs.waydro.id/faq/google-play-certification) describe.
 4. **Add apps.** Install from the Play Store inside Android, or sideload an APK with
    `waydroid app install app.apk`. Android apps appear in your desktop app menu, and on Android 16
    and 17 they open inside the Android window.
 5. **Stay current.** `sudo waydroid upgrade` pulls new images from the same update channel that
-   omawaydroid set up. Android 17 currently carries the October 2026 security patch.
+   omawaydroid set up. As of v0.1.0, Android 17 carries the October 2026 security patch.
 
 ## What it fixes
 
@@ -126,7 +130,7 @@ per second).
 
 ## Troubleshooting
 
-Start with `bash omawaydroid.sh doctor`. Here it finds a leftover DKMS module and a firewall that
+Start with `bash omawaydroid.sh doctor`. In this example it finds a leftover DKMS module and a firewall that
 would block Android's network, and says what to do about each:
 
 ```
@@ -151,7 +155,7 @@ would block Android's network, and says what to do about each:
 | `binder comes from a DKMS module` | It works, though a kernel update can stop it. Omarchy's kernel 7.2.8-9 and newer and Arch's `linux`, `linux-zen` and `linux-lts` have binder built in. |
 | `python-gbinder is broken` | `sudo pacman -Syu python-gbinder`. This usually follows a Python upgrade. |
 | `... holds Waydroid images` | Remove the preinstalled images in `/etc/waydroid-extra/images` or `/usr/share/waydroid-extra/images`; they override downloaded ones and block updates. |
-| Android has no network | Run `install` again; it adds the missing ufw rules. With firewalld, move `waydroid0` to the `trusted` zone if `doctor` reports another zone. |
+| Android has no network | Run `install` again; it adds the missing ufw rules. With firewalld, move `waydroid0` to the `trusted` zone if `install` reports another zone. |
 | `an earlier install stopped half-way` or `no Android image installed yet` | Run `install` again. Finished downloads are reused. |
 | Android 16/17 apps from the app menu do not appear | Run `install` again to add the launcher. If `install` says `~/.local/bin` is not ahead of `/usr/bin` in your desktop session's `PATH`, put it first and log in again. |
 | `Android did not start` notification | Run `bash omawaydroid.sh doctor`; the wrapper waits up to three minutes for Android to boot. |
